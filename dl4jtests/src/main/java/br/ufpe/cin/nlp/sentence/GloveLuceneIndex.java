@@ -137,7 +137,7 @@ public class GloveLuceneIndex implements GloveVocab {
 		}
 		if (tops.totalHits > 0) {
 			final ScoreDoc[] scoreDoc = tops.scoreDocs;
-			log.debug("found {} hit(s) in index matching {}", scoreDoc.length, word);
+			//log.debug("found {} hit(s) in index matching {}", scoreDoc.length, word);
 			assert scoreDoc.length > 0;
 			final int docIndex = scoreDoc[0].doc;
 			Document doc;

@@ -58,6 +58,18 @@
             <groupId>org.nd4j</groupId>
             <artifactId>nd4j-x86</artifactId>
         </dependency>
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-compress</artifactId>
+            <version>1.8</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.lucene</groupId>
+            <artifactId>lucene-core</artifactId>
+            <version>4.10.3</version>
+        </dependency>
+        
+        
 <!--         <dependency> -->
 <!--             <groupId>org.jblas</groupId> -->
 <!--             <artifactId>jblas</artifactId> -->

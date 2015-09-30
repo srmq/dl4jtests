@@ -6,13 +6,20 @@ import java.util.WeakHashMap;
 public class GloveIndexCache implements GloveVocab {
 	private GloveLuceneIndex wrappedIndex;
 	private Map<String, float[]> cache;
+	private boolean flushed;
 	
 	public GloveIndexCache(GloveLuceneIndex index) {
 		this.wrappedIndex = index;
-		this.cache = new WeakHashMap<String, float[]>();
+		allocateCache();
+	}
+
+	private void allocateCache() {
+		this.cache = new WeakHashMap<String, float[]>(50000);
+		flushed = false;
 	}
 	
-	public float[] embeddingFor(String word) {
+	public synchronized float[] embeddingFor(String word) {
+		if (flushed) allocateCache();
 		float[] ret = cache.get(word);
 		if (ret == null) {
 			ret = wrappedIndex.embeddingFor(word);
@@ -24,7 +31,8 @@ public class GloveIndexCache implements GloveVocab {
 		return ret;
 	}
 	
-	public boolean contains(String word) {
+	public synchronized boolean contains(String word) {
+		if (flushed) allocateCache();
 		boolean ret = false;
 		if (cache.containsKey(word)) {
 			ret = true;
@@ -36,6 +44,11 @@ public class GloveIndexCache implements GloveVocab {
 			}
 		}
 		return ret;
+	}
+	
+	public synchronized void flush() {
+		flushed = true;
+		this.cache = null;
 	}
 
 	@Override
