@@ -2,3 +2,5 @@
 /.settings/
 /.classpath
 /.project
+/glove-index/
+/glove-6B-300d/
