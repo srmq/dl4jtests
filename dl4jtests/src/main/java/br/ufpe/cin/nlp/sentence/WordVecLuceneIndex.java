@@ -37,9 +37,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 
-public class GloveLuceneIndex implements GloveVocab {
+public class WordVecLuceneIndex implements VectorVocab {
 	
-    private static final Logger log = LoggerFactory.getLogger(GloveLuceneIndex.class);
+    private static final Logger log = LoggerFactory.getLogger(WordVecLuceneIndex.class);
     private boolean indexExists = false;
     private transient IndexReader reader;
     private transient IndexSearcher searcher;
@@ -49,7 +49,7 @@ public class GloveLuceneIndex implements GloveVocab {
     private int words = -1;
     private int embedSize = -1;
 
-	public GloveLuceneIndex(File fromFile, String indexPath, boolean reuse) {
+	public WordVecLuceneIndex(File fromFile, String indexPath, boolean reuse) {
 		this.indexPath = indexPath;
 		File filePath = new File(indexPath);
         if(filePath.exists()) {

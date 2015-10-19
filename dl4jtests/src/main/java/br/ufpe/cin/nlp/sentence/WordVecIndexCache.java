@@ -3,12 +3,12 @@ package br.ufpe.cin.nlp.sentence;
 import java.util.Map;
 import java.util.WeakHashMap;
 
-public class GloveIndexCache implements GloveVocab {
-	private GloveLuceneIndex wrappedIndex;
+public class WordVecIndexCache implements VectorVocab {
+	private WordVecLuceneIndex wrappedIndex;
 	private Map<String, float[]> cache;
 	private boolean flushed;
 	
-	public GloveIndexCache(GloveLuceneIndex index) {
+	public WordVecIndexCache(WordVecLuceneIndex index) {
 		this.wrappedIndex = index;
 		allocateCache();
 	}

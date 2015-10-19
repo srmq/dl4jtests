@@ -1,0 +1,15 @@
+.directory
+Glove-Holmes-*
+GoogleNews-*.gz
+GoogleNews-*.txt
+TfIdfInfo-*.gz
+WordVec-*
+glove-6B-300d-StopwordsPresent/
+glove-6B-300d-StopwordsRemoved/
+glove-index-StopwordsPresent/
+glove-index-StopwordsRemoved/
+googleNews-300d-StopwordsPresent/
+googleNews-300d-StopwordsRemoved/
+vector-index-googleNews-StopwordsPresent/
+vector-index-googleNews-StopwordsRemoved/
+runlog*
