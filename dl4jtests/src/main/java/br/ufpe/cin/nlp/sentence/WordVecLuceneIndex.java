@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
+import java.util.Locale;
 import java.util.UUID;
 import java.util.zip.GZIPInputStream;
 
@@ -175,9 +176,9 @@ public class WordVecLuceneIndex implements VectorVocab {
 		this.embedSize = Integer.parseInt(initial[1]);
 		int n = 0;
 		while ((line = reader.readLine()) != null) {
-			String[] split = line.split(" ");
+			final String[] split = line.split(" ");
 			assert split.length == embedSize + 1;
-			String word = split[0];
+			final String word = split[0].toLowerCase(Locale.ENGLISH);
 			float[] vector = new float[split.length - 1];
 			for (int i = 1; i < split.length; i++) {
 				vector[i - 1] = Float.parseFloat(split[i]);
