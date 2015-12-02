@@ -3,7 +3,9 @@ package br.ufpe.cin.nlp.sentence;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.deeplearning4j.berkeley.Pair;
 import org.deeplearning4j.models.embeddings.inmemory.InMemoryLookupTable;
@@ -11,17 +13,23 @@ import org.deeplearning4j.models.embeddings.loader.WordVectorSerializer;
 import org.deeplearning4j.models.word2vec.Word2Vec;
 import org.deeplearning4j.models.word2vec.wordstore.VocabCache;
 import org.nd4j.linalg.api.ndarray.INDArray;
+import org.nd4j.linalg.api.ops.impl.accum.distances.CosineSimilarity;
 import org.nd4j.linalg.factory.Nd4j;
 import org.nd4j.linalg.ops.transforms.Transforms;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import br.ufpe.cin.nlp.sentence.SentenceCompletionQuestions.Question;
+import scala.Int;
 
 public class SentenceCompletionAnswering {
 	private static final Logger log = LoggerFactory.getLogger(SentenceCompletionAnswering.class);
 
 	private List<EmbeddingView> embeddingViews;
+
+	public enum DistanceType {
+		IDF_DECWEIGHT_EUCLIDIAN, IDF_DECWEIGHT_COSINE, DECWEIGHT_EUCLIDIAN, DECWEIGHT_COSINE, IDF_EUCLIDIAN, IDF_COSINE, EUCLIDIAN, COSINE
+	}
 
 	public SentenceCompletionAnswering(String[] embeddingFileNames, String[] tfIdfFileNames) throws IOException {
 		assert (embeddingFileNames.length == tfIdfFileNames.length);
@@ -47,20 +55,26 @@ public class SentenceCompletionAnswering {
 		}
 
 		public INDArray computeDistancesForQuestion(Question q) {
+			return this.computeDistancesForQuestion(q, DistanceType.IDF_DECWEIGHT_EUCLIDIAN);
+		}
+
+		public INDArray computeDistancesForQuestion(Question q, DistanceType distType) {
 			INDArray distVector = Nd4j.create(
 					new int[] { q.getOptions().size(), q.getTokensBefore().size() + q.getTokensAfter().size() });
 			INDArray weightVector = Nd4j
 					.create(new int[] { q.getTokensBefore().size() + q.getTokensAfter().size(), 1 });
-			for (int d = 1; d <= q.getTokensBefore().size(); d++) {
-				final int pos = q.getTokensBefore().size() - d;
-				assert pos >= 0 && pos < weightVector.length();
-				weightVector.putScalar(pos, 1.0 / d);
+			switch (distType) {
+			case IDF_DECWEIGHT_COSINE:
+			case IDF_DECWEIGHT_EUCLIDIAN:
+			case DECWEIGHT_EUCLIDIAN:
+			case DECWEIGHT_COSINE:
+				decreasingWeightsVector(q, weightVector);
+				break;
+			default:
+				weightVector.assign(1.0);
+				break;
 			}
-			for (int d = 1; d <= q.getTokensAfter().size(); d++) {
-				final int pos = q.getTokensBefore().size() + d - 1;
-				assert pos >= 0 && pos < weightVector.length();
-				weightVector.putScalar(pos, 1.0 / d);
-			}
+
 			for (int option = 0; option < q.getOptions().size(); option++) {
 				String opWord = q.getOptions().get(option);
 				if (opWord.equals(Word2Vec.UNK)) {
@@ -81,9 +95,34 @@ public class SentenceCompletionAnswering {
 					// documents");
 					if (this.vocabCache.containsWord(word)) {
 						INDArray wordVec = this.lookupTable.vector(word);
-						distVector.slice(option).putScalar(n, opVec.distance2(wordVec));
-						weightVector.putScalar(n,
-								weightVector.getFloat(n) / Math.log10(1 + tfIdfInfo.docAppearedIn(word)));
+						
+						//adjusting weights using IDF, if needed, and computing distance
+						final double distValue;
+						switch (distType) {
+						case IDF_DECWEIGHT_COSINE:
+						case IDF_COSINE:
+							idfAdjustWeight(weightVector, n, word);
+							distValue = -Nd4j.getExecutioner().execAndReturn(new CosineSimilarity(opVec,wordVec)).getFinalResult().doubleValue();
+							break;
+						case IDF_DECWEIGHT_EUCLIDIAN:
+						case IDF_EUCLIDIAN:
+							idfAdjustWeight(weightVector, n, word);
+							distValue = opVec.distance2(wordVec);
+							break;
+						case DECWEIGHT_EUCLIDIAN:
+						case EUCLIDIAN:
+							distValue = opVec.distance2(wordVec);
+							break;
+						case DECWEIGHT_COSINE:
+						case COSINE:
+							distValue = -Nd4j.getExecutioner().execAndReturn(new CosineSimilarity(opVec,wordVec)).getFinalResult().doubleValue();
+							break;
+						default:
+							distValue = Int.MinValue(); //ERROR!
+							throw new IllegalStateException("distValue was not set!");
+						}
+						distVector.slice(option).putScalar(n, distValue);
+						
 					} else {
 						weightVector.putScalar(n, 0.0);
 					}
@@ -93,9 +132,33 @@ public class SentenceCompletionAnswering {
 					String word = q.getTokensAfter().get(n);
 					if (this.vocabCache.containsWord(word)) {
 						INDArray wordVec = this.lookupTable.vector(word);
-						distVector.slice(option).putScalar(pos, opVec.distance2(wordVec));
-						weightVector.putScalar(pos,
-								weightVector.getFloat(pos) / Math.log10(1 + tfIdfInfo.docAppearedIn(word)));
+						final double distValue;
+						
+						//adjusting weights using IDF, if needed
+						switch (distType) {
+						case IDF_DECWEIGHT_COSINE:
+						case IDF_COSINE:
+							idfAdjustWeight(weightVector, pos, word);
+							distValue = -Nd4j.getExecutioner().execAndReturn(new CosineSimilarity(opVec,wordVec)).getFinalResult().doubleValue();
+							break;
+						case IDF_DECWEIGHT_EUCLIDIAN:
+						case IDF_EUCLIDIAN:
+							idfAdjustWeight(weightVector, pos, word);
+							distValue = opVec.distance2(wordVec);
+							break;
+						case DECWEIGHT_EUCLIDIAN:
+						case EUCLIDIAN:
+							distValue = opVec.distance2(wordVec);
+							break;
+						case DECWEIGHT_COSINE:
+						case COSINE:
+							distValue = -Nd4j.getExecutioner().execAndReturn(new CosineSimilarity(opVec,wordVec)).getFinalResult().doubleValue();
+							break;
+						default:
+							distValue = Int.MinValue(); //ERROR!
+							throw new IllegalStateException("distValue was not set!");
+						}
+						distVector.slice(option).putScalar(pos, distValue);
 					} else {
 						weightVector.putScalar(pos, 0.0);
 					}
@@ -107,12 +170,42 @@ public class SentenceCompletionAnswering {
 			INDArray distances = distVector.mmul(scaledWeights);
 			return distances;
 		}
+
+		private void idfAdjustWeight(INDArray weightVector, int pos, String word) {
+			weightVector.putScalar(pos, weightVector.getFloat(pos) / Math.log10(1 + tfIdfInfo.docAppearedIn(word)));
+		}
+
+		private void decreasingWeightsVector(Question q, INDArray weightVector) {
+			for (int d = 1; d <= q.getTokensBefore().size(); d++) {
+				final int pos = q.getTokensBefore().size() - d;
+				assert pos >= 0 && pos < weightVector.length();
+				weightVector.putScalar(pos, 1.0 / d);
+			}
+			for (int d = 1; d <= q.getTokensAfter().size(); d++) {
+				final int pos = q.getTokensBefore().size() + d - 1;
+				assert pos >= 0 && pos < weightVector.length();
+				weightVector.putScalar(pos, 1.0 / d);
+			}
+		}
+	}
+	
+	public INDArray[] computeDistancesForQuestion(Question q) {
+		return this.computeDistancesForQuestion(q, DistanceType.IDF_DECWEIGHT_EUCLIDIAN);
 	}
 
-	public INDArray[] computeDistancesForQuestion(Question q) {
+	public INDArray[] computeDistancesForQuestion(Question q, DistanceType distType) {
 		INDArray[] ret = new INDArray[this.embeddingViews.size()];
 		for (int i = 0; i < this.embeddingViews.size(); i++) {
-			ret[i] = this.embeddingViews.get(i).computeDistancesForQuestion(q);
+			ret[i] = this.embeddingViews.get(i).computeDistancesForQuestion(q, distType);
+		}
+		return ret;
+	}
+	
+	public Map<DistanceType, INDArray[]> computeAllDistancesForQuestion(Question q) {
+		final Map<DistanceType, INDArray[]> ret = new HashMap<DistanceType, INDArray[]>(DistanceType.values().length);
+		for (DistanceType dist : DistanceType.values()) {
+			INDArray[] result = this.computeDistancesForQuestion(q, dist);
+			ret.put(dist, result);
 		}
 		return ret;
 	}
@@ -121,18 +214,16 @@ public class SentenceCompletionAnswering {
 		SentenceCompletionAnswering scAns = new SentenceCompletionAnswering(
 				new String[] {
 						"WordVec-Holmes-MikolovRNN1600-StopwordsRemoved.txt",
-						"WordVec-Holmes-HuangOriginalVectors-StopwordsRemoved.txt",						
+						"WordVec-Holmes-HuangOriginalVectors-StopwordsRemoved.txt",
 						"WordVec-Holmes-GoogleNews-StopwordsPresent.txt",
 						"WordVec-Holmes-Glove-StopwordsRemoved.txt",
-						"WordVec-Holmes-SennaOriginalVectors-StopwordsPresent.txt"  
-					},
+						"WordVec-Holmes-SennaOriginalVectors-StopwordsPresent.txt" },
 				new String[] {
-						"TfIdfInfo-Holmes-MikolovRNN1600-StopwordsRemoved.json.gz"  ,
+						"TfIdfInfo-Holmes-MikolovRNN1600-StopwordsRemoved.json.gz",
 						"TfIdfInfo-Holmes-HuangOriginalVectors-StopwordsRemoved.json.gz",
 						"TfIdfInfo-Holmes-GoogleNews-StopwordsPresent.json.gz",
-						"TfIdfInfo-Holmes-Glove-StopwordsRemoved.json.gz",
-						"TfIdfInfo-Holmes-SennaOriginalVectors-StopwordsPresent.json.gz" 
-					});
+						"TfIdfInfo-Holmes-Glove-StopwordsRemoved.json.gz" ,
+						"TfIdfInfo-Holmes-SennaOriginalVectors-StopwordsPresent.json.gz" });
 		final List<Question> listQuestions = questions();
 		int correct = 0;
 
@@ -142,8 +233,9 @@ public class SentenceCompletionAnswering {
 			for (int j = 0; j < distances.length; j++) {
 				distances[j] = Transforms.unitVec(distances[j]);
 			}
-
-			int bestIndex = scAns.minMaxRegretIndex(distances);
+			scAns.computeAllDistancesForQuestion(q);
+			int bestIndex = (distances.length == 1) ? NDMathUtils.indexMin(distances[0])
+					: scAns.minMaxRegretIndex(distances);
 			System.out.println("QUESTION " + (i + 1));
 			System.out.println("Tokens before: " + q.getTokensBefore().toString());
 			System.out.println("Tokens after: " + q.getTokensAfter().toString());
