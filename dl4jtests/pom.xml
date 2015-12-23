@@ -2,7 +2,7 @@
 	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 
-	<groupId>org.srmq</groupId>
+	<groupId>br.ufpe.cin.nlp</groupId>
 	<artifactId>dl4jtests</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<packaging>jar</packaging>
@@ -44,6 +44,16 @@
 	</dependencyManagement>
 	<dependencies>
 		<dependency>
+	<groupId>br.ufpe.cin.util</groupId>
+	<artifactId>util-db</artifactId>
+	<version>0.0.1-SNAPSHOT</version>
+		</dependency>
+			<dependency>
+				<groupId>br.ufpe.cin.nlp</groupId>
+				<artifactId>sentence-base</artifactId>
+				<version>0.0.1-SNAPSHOT</version>
+			</dependency>
+		<dependency>
 			<groupId>org.deeplearning4j</groupId>
 			<artifactId>deeplearning4j-nlp</artifactId>
 			<version>${dl4j.version}</version>
@@ -65,7 +75,7 @@
 		<dependency>
 			<groupId>org.apache.lucene</groupId>
 			<artifactId>lucene-core</artifactId>
-			<version>4.10.3</version>
+			<version>5.1.0</version>
 		</dependency>
 		<dependency>
 			<groupId>com.google.code.gson</groupId>
@@ -75,8 +85,8 @@
 		<dependency>
 			<groupId>com.diffplug.matsim</groupId>
 			<artifactId>jmatio</artifactId>
-			<version>1.2.0</version>		
-		</dependency>		
+			<version>1.2.0</version>
+		</dependency>
 		<!-- <dependency> -->
 		<!-- <groupId>org.jblas</groupId> -->
 		<!-- <artifactId>jblas</artifactId> -->

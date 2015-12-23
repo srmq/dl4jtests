@@ -19,7 +19,8 @@ import org.nd4j.linalg.ops.transforms.Transforms;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import br.ufpe.cin.nlp.sentence.SentenceCompletionQuestions.Question;
+import br.ufpe.cin.nlp.sentence.base.SentenceCompletionQuestions;
+import br.ufpe.cin.nlp.sentence.base.SentenceCompletionQuestions.Question;
 import scala.Int;
 
 public class SentenceCompletionAnswering {

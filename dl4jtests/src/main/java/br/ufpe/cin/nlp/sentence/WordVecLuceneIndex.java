@@ -33,7 +33,6 @@ import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.Version;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -69,7 +68,7 @@ public class WordVecLuceneIndex implements VectorVocab {
         		}
         		
         		try {
-					this.dir = FSDirectory.open(new File(this.indexPath));
+					this.dir = FSDirectory.open(new File(this.indexPath).toPath());
 				} catch (IOException e) {
 					throw new IllegalStateException("Cannot open indexpath: " + this.indexPath, e);
 				}
@@ -211,7 +210,7 @@ public class WordVecLuceneIndex implements VectorVocab {
 		if (this.analyzer == null) {
 			this.analyzer = new StandardAnalyzer(new InputStreamReader(new ByteArrayInputStream("".getBytes())));
 		}
-		IndexWriterConfig iwc = new IndexWriterConfig(Version.LATEST, analyzer);
+		IndexWriterConfig iwc = new IndexWriterConfig(analyzer);
         iwc.setOpenMode(IndexWriterConfig.OpenMode.CREATE);
         iwc.setWriteLockTimeout(1000);
         
@@ -234,7 +233,7 @@ public class WordVecLuceneIndex implements VectorVocab {
             log.info("Creating directory " + indexPath);
             File dir2 = new File(indexPath);
             dir2.mkdir();
-            dir = FSDirectory.open(new File(indexPath));
+            dir = FSDirectory.open(new File(indexPath).toPath());
         }
 	}
 

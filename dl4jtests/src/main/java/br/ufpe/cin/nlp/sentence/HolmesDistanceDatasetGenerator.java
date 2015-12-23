@@ -7,7 +7,8 @@ import java.util.Map;
 import org.nd4j.linalg.api.ndarray.INDArray;
 
 import br.ufpe.cin.nlp.sentence.SentenceCompletionAnswering.DistanceType;
-import br.ufpe.cin.nlp.sentence.SentenceCompletionQuestions.Question;
+import br.ufpe.cin.nlp.sentence.base.SentenceCompletionQuestions;
+import br.ufpe.cin.nlp.sentence.base.SentenceCompletionQuestions.Question;
 
 public class HolmesDistanceDatasetGenerator {
 
