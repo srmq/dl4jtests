@@ -33,6 +33,8 @@ public class SentenceCompletionAnswering {
 	}
 
 	public SentenceCompletionAnswering(String[] embeddingFileNames, String[] tfIdfFileNames) throws IOException {
+		assert (embeddingFileNames != null && tfIdfFileNames != null);
+		assert (embeddingFileNames.length > 0 && tfIdfFileNames.length > 0);
 		assert (embeddingFileNames.length == tfIdfFileNames.length);
 		this.embeddingViews = new ArrayList<EmbeddingView>(embeddingFileNames.length);
 		for (int i = 0; i < embeddingFileNames.length; i++) {
