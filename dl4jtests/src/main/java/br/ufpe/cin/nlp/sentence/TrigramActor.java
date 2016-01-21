@@ -203,6 +203,8 @@ public class TrigramActor extends UntypedActor {
 		System.out.println("Total number of unique trigrams: " + uniqueTrigrams.get());
 		
 		trainingSystem.shutdown();
+		index.commit();
+		index.close();
 		dbManager.close();
 	}
 
