@@ -1,6 +1,5 @@
-sc-answering/.directory
-sc-answering/target
 .directory
-sc-answering/.classpath
-sc-answering/.project
-sc-answering/.settings/
+target
+.classpath
+.project
+.settings/
