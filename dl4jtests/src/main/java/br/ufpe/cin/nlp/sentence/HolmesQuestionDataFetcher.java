@@ -1,7 +1,10 @@
 package br.ufpe.cin.nlp.sentence;
 
 import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
@@ -16,17 +19,21 @@ public class HolmesQuestionDataFetcher extends BaseDataFetcher {
 	private int fileCursor;
 	private BufferedReader reader;
 	
+	private File inputFile;
+	
 	/**
 	 * 
 	 */
 	private static final long serialVersionUID = -3233812699590480647L;
-	public HolmesQuestionDataFetcher() {
+	public HolmesQuestionDataFetcher(int numExamples) {
+		this(numExamples, null);
+	}
+	public HolmesQuestionDataFetcher(int numExamples, File inputFile) {
 		numOutcomes = 5;
 		inputColumns = 200;
-		totalExamples = NUM_EXAMPLES;
+		totalExamples = numExamples;
+		this.inputFile = inputFile;
 	}
-
-	public final static int NUM_EXAMPLES = 1040;
 
 	@Override
 	public void fetch(int numExamples) {
@@ -36,24 +43,42 @@ public class HolmesQuestionDataFetcher extends BaseDataFetcher {
 			to = totalExamples;
 		
 		try {
-			initializeCurrFromList(loadHolmes(from, to));
+			initializeCurrFromList(loadHolmes(from, to, this.inputFile));
 			cursor += numExamples;
 		} catch (IOException e) {
-			throw new IllegalStateException("Unable to load HolmesDistanceDataset.txt");
+			throw new IllegalStateException("Unable to load textfile with dataset");
 		}
 		
 		
 	}
 	
-	private void reopenFile() throws IOException {
+	private void reopenFile(InputStream fileStream) throws IOException {
 		this.close();
-        ClassPathResource resource = new ClassPathResource("/HolmesDistanceDataset.txt");
-		this.reader = new BufferedReader(new InputStreamReader(resource.getInputStream()));
+
+		this.reader = new BufferedReader(new InputStreamReader(fileStream));
 	}
 	
 	public List<DataSet> loadHolmes(int from, int to) throws IOException {
-		if (this.reader == null || from < this.fileCursor) this.reopenFile();
-        while (this.fileCursor < from) {
+		return loadHolmes(from, to, null);
+	}
+	
+	public List<DataSet> loadHolmes(int from, int to, File inputFile) throws IOException {
+		if (this.reader == null || from < this.fileCursor){
+			InputStream iStream;
+			if (inputFile == null) {
+		        ClassPathResource resource = new ClassPathResource("/HolmesDistanceDataset.txt");
+		        iStream = resource.getInputStream();
+			} else {
+				iStream = new FileInputStream(inputFile);
+			}
+			this.reopenFile(iStream);
+		}
+        return getDataset(from, to);
+	}
+	
+
+	private List<DataSet> getDataset(int from, int to) throws IOException {
+		while (this.fileCursor < from) {
         	nextLine();
         }
         assert this.fileCursor == from;
@@ -79,7 +104,6 @@ public class HolmesQuestionDataFetcher extends BaseDataFetcher {
             list.add(add);
         }
         return list;
-
 	}
 	
 	private void addRow(INDArray ret,int row,String[] line) {
@@ -108,7 +132,7 @@ public class HolmesQuestionDataFetcher extends BaseDataFetcher {
 	}
 	
 	public static void main(String[] args) {
-		HolmesQuestionDataFetcher hqdf = new HolmesQuestionDataFetcher();
+		HolmesQuestionDataFetcher hqdf = new HolmesQuestionDataFetcher(1040);
 		hqdf.fetch(5);
 		hqdf.fetch(1);
 	}

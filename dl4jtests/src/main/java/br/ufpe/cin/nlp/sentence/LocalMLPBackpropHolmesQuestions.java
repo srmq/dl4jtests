@@ -1,5 +1,6 @@
 package br.ufpe.cin.nlp.sentence;
 
+import java.io.File;
 import java.util.Arrays;
 
 import org.deeplearning4j.eval.Evaluation;
@@ -19,21 +20,21 @@ import org.nd4j.linalg.lossfunctions.LossFunctions.LossFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class MLPBackpropHolmesQuestions {
+public class LocalMLPBackpropHolmesQuestions {
 	
-	private static Logger log = LoggerFactory.getLogger(MLPBackpropHolmesQuestions.class);
+	private static Logger log = LoggerFactory.getLogger(LocalMLPBackpropHolmesQuestions.class);
 
 	public static void main(String[] args) {
         final int numInputs = 200;
         int outputNum = 5;
-        int numSamples = 1040;
-        int batchSize = 1040;
-        int iterations = 100;
+        int numSamples = 2000;//1040;
+        int batchSize = 1000;//1040;
+        int iterations = 10000;
         long seed = 1;
-        int listenerFreq = iterations/5;
+        int listenerFreq = 100;
 
         log.info("Load data....");
-        DataSetIterator iter = new HolmesDatasetIterator(batchSize, numSamples);
+        DataSetIterator iter = new HolmesDatasetIterator(batchSize, numSamples, new File("/home/srmq/git/holmes-question-producer/Holmes-NumericQuestions-Training.txt"));
 
         log.info("Build model....");
         MultiLayerConfiguration conf = new NeuralNetConfiguration.Builder()
@@ -44,18 +45,18 @@ public class MLPBackpropHolmesQuestions {
                 .l1(0.3).regularization(true).l2(1e-3)
                 .constrainGradientToUnitNorm(true)
                 .list(3)
-                .layer(0, new DenseLayer.Builder().nIn(numInputs).nOut(30)
-                        .activation("tanh")
+                .layer(0, new DenseLayer.Builder().nIn(numInputs).nOut(numInputs)
+                        .activation("relu")
                         .weightInit(WeightInit.XAVIER)
                         .build())
-                .layer(1, new DenseLayer.Builder().nIn(30).nOut(10)
+                .layer(1, new DenseLayer.Builder().nIn(numInputs).nOut(300)
                         .activation("tanh")
                         .weightInit(WeightInit.XAVIER)
                         .build())
                 .layer(2, new OutputLayer.Builder(LossFunction.MCXENT)
                         .weightInit(WeightInit.XAVIER)
                         .activation("softmax")
-                		.nIn(10).nOut(outputNum).build())
+                		.nIn(300).nOut(outputNum).build())
                 .backprop(true).pretrain(false)
                 .build();
 
@@ -80,7 +81,7 @@ public class MLPBackpropHolmesQuestions {
 
         log.info("Evaluate model....");
         Evaluation eval = new Evaluation(outputNum);
-        DataSetIterator iterTest = new HolmesDatasetIterator(numSamples, numSamples);
+        DataSetIterator iterTest = new HolmesDatasetIterator(numSamples, numSamples , new File("/home/srmq/git/holmes-question-producer/Holmes-NumericQuestions-Training.txt"));
         DataSet test = iterTest.next();
         test.normalizeZeroMeanZeroUnitVariance();
         INDArray output = model.output(test.getFeatureMatrix());
