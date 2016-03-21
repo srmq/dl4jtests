@@ -1,6 +1,8 @@
 package br.ufpe.cin.nlp.sentence;
 
 import java.io.File;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
@@ -19,6 +21,8 @@ import org.deeplearning4j.text.sentenceiterator.UimaSentenceIterator;
 import org.deeplearning4j.text.stopwords.StopWords;
 import org.deeplearning4j.text.tokenization.tokenizerfactory.TokenizerFactory;
 import org.deeplearning4j.text.tokenization.tokenizerfactory.UimaTokenizerFactory;
+
+import br.ufpe.cin.util.io.JsonSerializer;
 
 public class HolmesVectorizer {
 
@@ -39,7 +43,8 @@ public class HolmesVectorizer {
 			}
 		});
 
-		InvertedIndex index = new LuceneInvertedIndex(null, false, indexVectorizerPath);
+		Path path = Paths.get(".", indexVectorizerPath);
+		InvertedIndex index = new LuceneInvertedIndex(null, false, path.toUri());
 		TokenizerFactory tokenFactory = new UimaTokenizerFactory();
 		VectorVocab vectorVocab;
 		{
@@ -75,7 +80,17 @@ public class HolmesVectorizer {
 
 	public static void main(String[] args) throws Exception {
 		HolmesVectorizer vec = new HolmesVectorizer();
+		vec.vectorize(new File("/home/srmq/git/holmes-question-producer/filtered300-GoogleNews300-Glove300.txt"),
+				"vector-index-filtered300-2-StopwordsRemoved", "filtered300-2-StopwordsRemoved", true,
+				new File("TfIdfInfo-Holmes-filtered300-GoogleNews300-Glove300-StopwordsRemoved.json.gz"),
+				new File("WordVec-Holmes-filtered300-GoogleNews300-Glove300-StopwordsRemoved.txt"), true);
 
+		vec.vectorize(new File("/home/srmq/git/holmes-question-producer/filtered300-GoogleNews300-Glove300.txt"),
+				"vector-index-filtered300-2-StopwordsPresent", "filtered300-2-StopwordsPresent", false,
+				new File("TfIdfInfo-Holmes-filtered300-GoogleNews300-Glove300-StopwordsPresent.json.gz"),
+				new File("WordVec-Holmes-filtered300-GoogleNews300-Glove300-StopwordsPresent.txt"), true);
+		
+/*
 		vec.vectorize(new File("/home/srmq/devel/mikolov-rnn/word_projections-80.txt.gz"),
 				"vector-index-MikolovRNN80-StopwordsRemoved", "MikolovRNN80Vectors-StopwordsRemoved", true,
 				new File("TfIdfInfo-Holmes-MikolovRNN80-StopwordsRemoved.json.gz"),
@@ -101,7 +116,7 @@ public class HolmesVectorizer {
 		vec.vectorize(new File("/home/srmq/devel/mikolov-rnn/word_projections-1600.txt.gz"),
 				"vector-index-MikolovRNN1600-StopwordsPresent", "MikolovRNN1600Vectors-StopwordsPresent", false,
 				new File("TfIdfInfo-Holmes-MikolovRNN1600-StopwordsPresent.json.gz"),
-				new File("WordVec-Holmes-MikolovRNN1600-StopwordsPresent.txt"), true);
+				new File("WordVec-Holmes-MikolovRNN1600-StopwordsPresent.txt"), true); */
 
 		/*
 		 * 

@@ -40,7 +40,7 @@ public class SentenceCompletionGoogleNewsWriter {
 			}
 		});
 
-		InvertedIndex index = new LuceneInvertedIndex(null, false, "vector-index-googleNews");
+		InvertedIndex index = new LuceneInvertedIndex(null, false, new File("vector-index-googleNews").toURI());
 		TokenizerFactory tokenFactory = new UimaTokenizerFactory();
 		VectorVocab vectorVocab;
 		{

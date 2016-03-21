@@ -55,5 +55,13 @@ public class TfIdfInfo implements Serializable{
 		final int ret = (res != null) ? res.intValue() : 0;
 		return ret;
 	}
+
+	public Map<String, Double> getWordFrequencies() {
+		return wordFrequencies;
+	}
+
+	public Map<String, Double> getDocFrequencies() {
+		return docFrequencies;
+	}
 	
 }

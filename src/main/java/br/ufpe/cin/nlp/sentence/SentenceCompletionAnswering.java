@@ -21,6 +21,7 @@ import org.slf4j.LoggerFactory;
 
 import br.ufpe.cin.nlp.sentence.base.SentenceCompletionQuestions;
 import br.ufpe.cin.nlp.sentence.base.SentenceCompletionQuestions.Question;
+import br.ufpe.cin.util.io.JsonSerializer;
 import scala.Int;
 
 public class SentenceCompletionAnswering {
@@ -214,6 +215,7 @@ public class SentenceCompletionAnswering {
 	}
 
 	public static void main(String[] args) throws Exception {
+		/*
 		SentenceCompletionAnswering scAns = new SentenceCompletionAnswering(
 				new String[] {
 						"WordVec-Holmes-MikolovRNN1600-StopwordsRemoved.txt",
@@ -227,6 +229,13 @@ public class SentenceCompletionAnswering {
 						"TfIdfInfo-Holmes-GoogleNews-StopwordsPresent.json.gz",
 						"TfIdfInfo-Holmes-Glove-StopwordsRemoved.json.gz" ,
 						"TfIdfInfo-Holmes-SennaOriginalVectors-StopwordsPresent.json.gz" });
+		*/
+		SentenceCompletionAnswering scAns = new SentenceCompletionAnswering(
+				new String[] {
+						"WordVec-Holmes-Glove-StopwordsRemoved.txt" },
+				new String[] {
+						"TfIdfInfo-Holmes-Glove-StopwordsRemoved.json.gz" });
+		
 		final List<Question> listQuestions = questions();
 		int correct = 0;
 
@@ -236,7 +245,7 @@ public class SentenceCompletionAnswering {
 			for (int j = 0; j < distances.length; j++) {
 				distances[j] = Transforms.unitVec(distances[j]);
 			}
-			scAns.computeAllDistancesForQuestion(q);
+			//scAns.computeAllDistancesForQuestion(q);
 			int bestIndex = (distances.length == 1) ? NDMathUtils.indexMin(distances[0])
 					: scAns.minMaxRegretIndex(distances);
 			System.out.println("QUESTION " + (i + 1));

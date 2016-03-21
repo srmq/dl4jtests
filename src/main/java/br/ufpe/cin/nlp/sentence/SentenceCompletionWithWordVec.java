@@ -119,7 +119,7 @@ public class SentenceCompletionWithWordVec {
 			}
 		});
 
-		InvertedIndex index = new LuceneInvertedIndex(null, false, "vector-index");
+		InvertedIndex index = new LuceneInvertedIndex(null, false, new File("vector-index").toURI());
 		TokenizerFactory tokenFactory = new UimaTokenizerFactory();
 		VectorVocab vectorVocab;
 		{

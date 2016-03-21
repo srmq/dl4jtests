@@ -2,12 +2,15 @@ package br.ufpe.cin.nlp.sentence;
 
 import java.io.File;
 import java.util.Arrays;
+import java.util.Collections;
 
 import org.deeplearning4j.eval.Evaluation;
+import org.deeplearning4j.nn.api.OptimizationAlgorithm;
 import org.deeplearning4j.nn.conf.MultiLayerConfiguration;
 import org.deeplearning4j.nn.conf.NeuralNetConfiguration;
 import org.deeplearning4j.nn.conf.layers.DenseLayer;
 import org.deeplearning4j.nn.conf.layers.OutputLayer;
+import org.deeplearning4j.nn.conf.layers.RBM;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
 import org.deeplearning4j.nn.params.DefaultParamInitializer;
 import org.deeplearning4j.nn.weights.WeightInit;
@@ -27,16 +30,17 @@ public class LocalMLPBackpropHolmesQuestions {
 	public static void main(String[] args) {
         final int numInputs = 200;
         int outputNum = 5;
-        int numSamples = 2000;//1040;
-        int batchSize = 1000;//1040;
-        int iterations = 10000;
-        long seed = 1;
+        int numSamples = 2040;
+        int batchSize = 1040;//1040;
+        int iterations = 40; //10000;
+        long seed = 123;
         int listenerFreq = 100;
 
         log.info("Load data....");
         DataSetIterator iter = new HolmesDatasetIterator(batchSize, numSamples, new File("/home/srmq/git/holmes-question-producer/Holmes-NumericQuestions-Training.txt"));
 
         log.info("Build model....");
+        
         MultiLayerConfiguration conf = new NeuralNetConfiguration.Builder()
                 .seed(seed)
                 .iterations(iterations)
@@ -58,7 +62,7 @@ public class LocalMLPBackpropHolmesQuestions {
                         .activation("softmax")
                 		.nIn(300).nOut(outputNum).build())
                 .backprop(true).pretrain(false)
-                .build();
+                .build(); 
 
         MultiLayerNetwork model = new MultiLayerNetwork(conf);
         model.init();
