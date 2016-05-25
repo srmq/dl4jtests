@@ -51,7 +51,10 @@ public class TfIdfInfo implements Serializable{
 	}
 	
 	private int intFrequency(String word, Map<String, Double> map) {
-		final Double res = map.get(word);
+		final Double res;
+		synchronized(map) {
+			res = map.get(word);
+		}
 		final int ret = (res != null) ? res.intValue() : 0;
 		return ret;
 	}

@@ -1,11 +1,21 @@
 package br.ufpe.cin.nlp.sentence;
 
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicIntegerArray;
+import java.util.zip.GZIPInputStream;
 
 import org.deeplearning4j.berkeley.Pair;
 import org.deeplearning4j.models.embeddings.inmemory.InMemoryLookupTable;
@@ -19,15 +29,92 @@ import org.nd4j.linalg.ops.transforms.Transforms;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.util.concurrent.AtomicDoubleArray;
+
 import br.ufpe.cin.nlp.sentence.base.SentenceCompletionQuestions;
 import br.ufpe.cin.nlp.sentence.base.SentenceCompletionQuestions.Question;
 import br.ufpe.cin.util.io.JsonSerializer;
 import scala.Int;
+import scala.Tuple2;
 
 public class SentenceCompletionAnswering {
+
+	private static class IterationProcessor implements Runnable {
+		// iteration is one-based
+		private int iteration;
+		private SentenceCompletionAnswering scAns;
+		private AtomicIntegerArray correctQuestions;
+		private AtomicDoubleArray percentCorret;
+
+		public IterationProcessor(int iteration, SentenceCompletionAnswering scAns, AtomicIntegerArray correctQuestions,
+				AtomicDoubleArray percentCorret) {
+			this.iteration = iteration;
+			this.scAns = scAns;
+			this.correctQuestions = correctQuestions;
+			this.percentCorret = percentCorret;
+		}
+
+		public void processIteration() throws FileNotFoundException, IOException {
+			final String correctionsFile = "/home/srmq/git/sc-answering/results/corrections-1mHolmes-iteration- "
+					+ iteration + ".json.gz";
+			Map<Tuple2<String, Integer>, Double> correctionsMap = readCorrections(new String[] { correctionsFile });
+
+			 //final Iterator<Question> listQuestions = questions().iterator();
+			final Iterator<Question> listQuestions = trainingQuestions();
+			int correct = 0;
+
+			{
+				int i = 0;
+				for (; listQuestions.hasNext(); i++) {
+					Question q = listQuestions.next();
+					INDArray[] distances = scAns.computeDistancesForQuestion(q, correctionsMap);
+					for (int k = 0; k < distances.length; k++) {
+						distances[k] = Transforms.unitVec(distances[k]);
+					}
+					// scAns.computeAllDistancesForQuestion(q);
+					int bestIndex = (distances.length == 1) ? NDMathUtils.indexMin(distances[0])
+							: scAns.minMaxRegretIndex(distances);
+					log.debug("QUESTION " + (i + 1));
+					log.debug("Tokens before: " + q.getTokensBefore().toString());
+					log.debug("Tokens after: " + q.getTokensAfter().toString());
+					log.debug("Options: " + q.getOptions().toString());
+					log.debug(
+							"Answer: " + (q.getCorrectIndex() + 1) + q.getCorrectLetter() + ") " + q.getCorrectWord());
+					log.debug("Predicted: " + (bestIndex + 1) + (char) ('a' + bestIndex) + ") "
+							+ q.getOptions().get(bestIndex));
+					if (bestIndex == q.getCorrectIndex())
+						correct++;
+				}
+				log.debug("");
+				correctQuestions.set(iteration - 1, correct);
+				percentCorret.set(iteration - 1, (100.0 * correct) / i);
+				System.out.println(correct + " answers out of " + i + " (" + percentCorret.get(iteration - 1) + "%)");
+				System.out.println("Corrections were used " + scAns._correctionsUsedTimes.get() + " times");
+
+			}
+
+		}
+
+		@Override
+		public void run() {
+			try {
+				processIteration();
+			} catch (FileNotFoundException e) {
+				e.printStackTrace();
+				throw new IllegalStateException(e);
+			} catch (IOException e) {
+				e.printStackTrace();
+				throw new IllegalStateException(e);
+			}
+		}
+
+	}
+
 	private static final Logger log = LoggerFactory.getLogger(SentenceCompletionAnswering.class);
 
 	private List<EmbeddingView> embeddingViews;
+
+	private ThreadLocal<Integer> _correctionsUsedTimes;
 
 	public enum DistanceType {
 		IDF_DECWEIGHT_EUCLIDIAN, IDF_DECWEIGHT_COSINE, DECWEIGHT_EUCLIDIAN, DECWEIGHT_COSINE, IDF_EUCLIDIAN, IDF_COSINE, EUCLIDIAN, COSINE
@@ -41,6 +128,12 @@ public class SentenceCompletionAnswering {
 		for (int i = 0; i < embeddingFileNames.length; i++) {
 			this.embeddingViews.add(new EmbeddingView(new File(embeddingFileNames[i]), new File(tfIdfFileNames[i])));
 		}
+		this._correctionsUsedTimes = new ThreadLocal<Integer>() {
+			@Override
+			protected Integer initialValue() {
+				return 0;
+			}
+		};
 	}
 
 	private static JsonSerializer<TfIdfInfo> serializer = new JsonSerializer<TfIdfInfo>(TfIdfInfo.class);
@@ -59,10 +152,11 @@ public class SentenceCompletionAnswering {
 		}
 
 		public INDArray computeDistancesForQuestion(Question q) {
-			return this.computeDistancesForQuestion(q, DistanceType.IDF_DECWEIGHT_EUCLIDIAN);
+			return this.computeDistancesForQuestion(q, DistanceType.IDF_DECWEIGHT_EUCLIDIAN, null);
 		}
 
-		public INDArray computeDistancesForQuestion(Question q, DistanceType distType) {
+		public INDArray computeDistancesForQuestion(Question q, DistanceType distType,
+				Map<Tuple2<String, Integer>, Double> correctedWeights) {
 			INDArray distVector = Nd4j.create(
 					new int[] { q.getOptions().size(), q.getTokensBefore().size() + q.getTokensAfter().size() });
 			INDArray weightVector = Nd4j
@@ -97,36 +191,62 @@ public class SentenceCompletionAnswering {
 					// appeared in
 					// " + vectorizer.getCache().docAppearedIn(word) + "
 					// documents");
+					final int dist = -(q.getTokensBefore().size() - n);
 					if (this.vocabCache.containsWord(word)) {
-						INDArray wordVec = this.lookupTable.vector(word);
-						
-						//adjusting weights using IDF, if needed, and computing distance
+						Double corrWeight = null;
+						if (correctedWeights != null) {
+							corrWeight = correctedWeights.get(new Tuple2<String, Integer>(word.toLowerCase(), dist));
+							if (corrWeight != null)
+								_correctionsUsedTimes.set(_correctionsUsedTimes.get() + 1);
+						}
+						// adjusting weights using IDF, if needed, and computing
+						// distance
 						final double distValue;
+
+						INDArray wordVec = this.lookupTable.vector(word);
+
 						switch (distType) {
 						case IDF_DECWEIGHT_COSINE:
 						case IDF_COSINE:
-							idfAdjustWeight(weightVector, n, word);
-							distValue = -Nd4j.getExecutioner().execAndReturn(new CosineSimilarity(opVec,wordVec)).getFinalResult().doubleValue();
+							if (corrWeight == null) {
+								idfAdjustWeight(weightVector, n, word);
+							} else {
+								weightVector.putScalar(n, corrWeight);
+							}
+							distValue = -Nd4j.getExecutioner().execAndReturn(new CosineSimilarity(opVec, wordVec))
+									.getFinalResult().doubleValue();
 							break;
 						case IDF_DECWEIGHT_EUCLIDIAN:
 						case IDF_EUCLIDIAN:
-							idfAdjustWeight(weightVector, n, word);
+							if (corrWeight == null) {
+								idfAdjustWeight(weightVector, n, word);
+							} else {
+								weightVector.putScalar(n, corrWeight);
+							}
 							distValue = opVec.distance2(wordVec);
 							break;
 						case DECWEIGHT_EUCLIDIAN:
 						case EUCLIDIAN:
 							distValue = opVec.distance2(wordVec);
+							if (corrWeight != null) {
+								weightVector.putScalar(n, corrWeight);
+							}
 							break;
 						case DECWEIGHT_COSINE:
 						case COSINE:
-							distValue = -Nd4j.getExecutioner().execAndReturn(new CosineSimilarity(opVec,wordVec)).getFinalResult().doubleValue();
+							distValue = -Nd4j.getExecutioner().execAndReturn(new CosineSimilarity(opVec, wordVec))
+									.getFinalResult().doubleValue();
+							if (corrWeight != null) {
+								weightVector.putScalar(n, corrWeight);
+							}
 							break;
 						default:
-							distValue = Int.MinValue(); //ERROR!
+							distValue = Int.MinValue(); // ERROR!
 							throw new IllegalStateException("distValue was not set!");
 						}
+
 						distVector.slice(option).putScalar(n, distValue);
-						
+
 					} else {
 						weightVector.putScalar(n, 0.0);
 					}
@@ -134,32 +254,56 @@ public class SentenceCompletionAnswering {
 				for (int n = 0; n < q.getTokensAfter().size(); n++) {
 					final int pos = q.getTokensBefore().size() + n;
 					String word = q.getTokensAfter().get(n);
+					final int dist = n + 1;
 					if (this.vocabCache.containsWord(word)) {
-						INDArray wordVec = this.lookupTable.vector(word);
+						Double corrWeight = null;
+						if (correctedWeights != null) {
+							corrWeight = correctedWeights.get(new Tuple2<String, Integer>(word.toLowerCase(), dist));
+							if (corrWeight != null)
+								_correctionsUsedTimes.set(_correctionsUsedTimes.get() + 1);
+						}
 						final double distValue;
-						
-						//adjusting weights using IDF, if needed
+
+						INDArray wordVec = this.lookupTable.vector(word);
+
+						// adjusting weights using IDF, if needed
 						switch (distType) {
 						case IDF_DECWEIGHT_COSINE:
 						case IDF_COSINE:
-							idfAdjustWeight(weightVector, pos, word);
-							distValue = -Nd4j.getExecutioner().execAndReturn(new CosineSimilarity(opVec,wordVec)).getFinalResult().doubleValue();
+							if (corrWeight == null) {
+								idfAdjustWeight(weightVector, pos, word);
+							} else {
+								weightVector.putScalar(pos, corrWeight);
+							}
+							distValue = -Nd4j.getExecutioner().execAndReturn(new CosineSimilarity(opVec, wordVec))
+									.getFinalResult().doubleValue();
 							break;
 						case IDF_DECWEIGHT_EUCLIDIAN:
 						case IDF_EUCLIDIAN:
-							idfAdjustWeight(weightVector, pos, word);
+							if (corrWeight == null) {
+								idfAdjustWeight(weightVector, pos, word);
+							} else {
+								weightVector.putScalar(pos, corrWeight);
+							}
 							distValue = opVec.distance2(wordVec);
 							break;
 						case DECWEIGHT_EUCLIDIAN:
 						case EUCLIDIAN:
 							distValue = opVec.distance2(wordVec);
+							if (corrWeight != null) {
+								weightVector.putScalar(pos, corrWeight);
+							}
 							break;
 						case DECWEIGHT_COSINE:
 						case COSINE:
-							distValue = -Nd4j.getExecutioner().execAndReturn(new CosineSimilarity(opVec,wordVec)).getFinalResult().doubleValue();
+							distValue = -Nd4j.getExecutioner().execAndReturn(new CosineSimilarity(opVec, wordVec))
+									.getFinalResult().doubleValue();
+							if (corrWeight != null) {
+								weightVector.putScalar(pos, corrWeight);
+							}
 							break;
 						default:
-							distValue = Int.MinValue(); //ERROR!
+							distValue = Int.MinValue(); // ERROR!
 							throw new IllegalStateException("distValue was not set!");
 						}
 						distVector.slice(option).putScalar(pos, distValue);
@@ -192,23 +336,24 @@ public class SentenceCompletionAnswering {
 			}
 		}
 	}
-	
-	public INDArray[] computeDistancesForQuestion(Question q) {
-		return this.computeDistancesForQuestion(q, DistanceType.IDF_DECWEIGHT_EUCLIDIAN);
+
+	public INDArray[] computeDistancesForQuestion(Question q, Map<Tuple2<String, Integer>, Double> correctedWeights) {
+		return this.computeDistancesForQuestion(q, DistanceType.IDF_DECWEIGHT_EUCLIDIAN, correctedWeights);
 	}
 
-	public INDArray[] computeDistancesForQuestion(Question q, DistanceType distType) {
+	public INDArray[] computeDistancesForQuestion(Question q, DistanceType distType,
+			Map<Tuple2<String, Integer>, Double> correctedWeights) {
 		INDArray[] ret = new INDArray[this.embeddingViews.size()];
 		for (int i = 0; i < this.embeddingViews.size(); i++) {
-			ret[i] = this.embeddingViews.get(i).computeDistancesForQuestion(q, distType);
+			ret[i] = this.embeddingViews.get(i).computeDistancesForQuestion(q, distType, correctedWeights);
 		}
 		return ret;
 	}
-	
+
 	public Map<DistanceType, INDArray[]> computeAllDistancesForQuestion(Question q) {
 		final Map<DistanceType, INDArray[]> ret = new HashMap<DistanceType, INDArray[]>(DistanceType.values().length);
 		for (DistanceType dist : DistanceType.values()) {
-			INDArray[] result = this.computeDistancesForQuestion(q, dist);
+			INDArray[] result = this.computeDistancesForQuestion(q, dist, null);
 			ret.put(dist, result);
 		}
 		return ret;
@@ -216,52 +361,71 @@ public class SentenceCompletionAnswering {
 
 	public static void main(String[] args) throws Exception {
 		/*
+		 * SentenceCompletionAnswering scAns = new SentenceCompletionAnswering(
+		 * new String[] { "WordVec-Holmes-MikolovRNN1600-StopwordsRemoved.txt",
+		 * "WordVec-Holmes-HuangOriginalVectors-StopwordsRemoved.txt",
+		 * "WordVec-Holmes-GoogleNews-StopwordsPresent.txt",
+		 * "WordVec-Holmes-Glove-StopwordsRemoved.txt",
+		 * "WordVec-Holmes-SennaOriginalVectors-StopwordsPresent.txt" }, new
+		 * String[] {
+		 * "TfIdfInfo-Holmes-MikolovRNN1600-StopwordsRemoved.json.gz",
+		 * "TfIdfInfo-Holmes-HuangOriginalVectors-StopwordsRemoved.json.gz",
+		 * "TfIdfInfo-Holmes-GoogleNews-StopwordsPresent.json.gz",
+		 * "TfIdfInfo-Holmes-Glove-StopwordsRemoved.json.gz" ,
+		 * "TfIdfInfo-Holmes-SennaOriginalVectors-StopwordsPresent.json.gz" });
+		 */
 		SentenceCompletionAnswering scAns = new SentenceCompletionAnswering(
-				new String[] {
-						"WordVec-Holmes-MikolovRNN1600-StopwordsRemoved.txt",
-						"WordVec-Holmes-HuangOriginalVectors-StopwordsRemoved.txt",
-						"WordVec-Holmes-GoogleNews-StopwordsPresent.txt",
-						"WordVec-Holmes-Glove-StopwordsRemoved.txt",
-						"WordVec-Holmes-SennaOriginalVectors-StopwordsPresent.txt" },
-				new String[] {
-						"TfIdfInfo-Holmes-MikolovRNN1600-StopwordsRemoved.json.gz",
-						"TfIdfInfo-Holmes-HuangOriginalVectors-StopwordsRemoved.json.gz",
-						"TfIdfInfo-Holmes-GoogleNews-StopwordsPresent.json.gz",
-						"TfIdfInfo-Holmes-Glove-StopwordsRemoved.json.gz" ,
-						"TfIdfInfo-Holmes-SennaOriginalVectors-StopwordsPresent.json.gz" });
-		*/
-		SentenceCompletionAnswering scAns = new SentenceCompletionAnswering(
-				new String[] {
-						"WordVec-Holmes-Glove-StopwordsRemoved.txt" },
-				new String[] {
-						"TfIdfInfo-Holmes-Glove-StopwordsRemoved.json.gz" });
-		
-		final List<Question> listQuestions = questions();
-		int correct = 0;
+				new String[] { "WordVec-Holmes-Glove-StopwordsRemoved.txt" },
+				new String[] { "TfIdfInfo-Holmes-Glove-StopwordsRemoved.json.gz" });
+		final int iterations = 30;
+		AtomicIntegerArray correctQuestionsArr = new AtomicIntegerArray(iterations);
+		AtomicDoubleArray percentCorrectArr = new AtomicDoubleArray(iterations);
 
-		for (int i = 0; i < listQuestions.size(); i++) {
-			Question q = listQuestions.get(i);
-			INDArray[] distances = scAns.computeDistancesForQuestion(q);
-			for (int j = 0; j < distances.length; j++) {
-				distances[j] = Transforms.unitVec(distances[j]);
-			}
-			//scAns.computeAllDistancesForQuestion(q);
-			int bestIndex = (distances.length == 1) ? NDMathUtils.indexMin(distances[0])
-					: scAns.minMaxRegretIndex(distances);
-			System.out.println("QUESTION " + (i + 1));
-			System.out.println("Tokens before: " + q.getTokensBefore().toString());
-			System.out.println("Tokens after: " + q.getTokensAfter().toString());
-			System.out.println("Options: " + q.getOptions().toString());
-			System.out
-					.println("Answer: " + (q.getCorrectIndex() + 1) + q.getCorrectLetter() + ") " + q.getCorrectWord());
-			System.out.println(
-					"Predicted: " + (bestIndex + 1) + (char) ('a' + bestIndex) + ") " + q.getOptions().get(bestIndex));
-			if (bestIndex == q.getCorrectIndex())
-				correct++;
+		ExecutorService executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+
+
+		List<Future<?>> futures = new ArrayList<Future<?>>(iterations);
+		for (int j = 21; j <= iterations; j++) {
+			futures.add(executor.submit(new IterationProcessor(j, scAns, correctQuestionsArr, percentCorrectArr)));
 		}
-		System.out.println("");
-		System.out.println(correct + " answers out of " + listQuestions.size() + " ("
-				+ (100.0f * correct) / listQuestions.size() + "%)");
+		for (Future<?> future : futures) {
+			future.get();
+		}
+		executor.shutdown();
+		System.out.println("Iter #Correct %Correct");
+		for (int i = 1; i <= iterations; i++) {
+			System.out.println(i + " " + correctQuestionsArr.get(i - 1) + " " + percentCorrectArr.get(i - 1));
+		}
+
+	}
+
+	@SuppressWarnings({ "unchecked", "rawtypes" })
+	public static Map<Tuple2<String, Integer>, Double> readCorrections(String[] args) throws IOException {
+		File correctionsFile;
+		Map jsonMap = null;
+		Map<Tuple2<String, Integer>, Double> correctionsMap = null;
+		if (args.length == 1) { // argument should be corrections file: .json.gz
+								// of Map<Tuple2<String, Integer>, Double>
+			correctionsFile = new File(args[0]);
+			assert (correctionsFile.isFile() && correctionsFile.canRead());
+		} else
+			correctionsFile = null;
+		if (correctionsFile != null) {
+			JsonSerializer jsonSerializer = new JsonSerializer(Map.class);
+			jsonMap = (Map) jsonSerializer.deserialize(correctionsFile);
+			correctionsMap = new HashMap<Tuple2<String, Integer>, Double>(jsonMap.size());
+			for (Object jsonEntry : jsonMap.entrySet()) {
+				Map.Entry<Object, Double> mapEntry = (Map.Entry<Object, Double>) jsonEntry;
+				String stringKey = mapEntry.getKey().toString();
+				correctionsMap.put(new Tuple2<String, Integer>(
+						stringKey.substring(stringKey.indexOf('(') + 1, stringKey.indexOf(',')),
+						Integer.parseInt(
+								stringKey.substring(stringKey.lastIndexOf(',') + 1, stringKey.lastIndexOf(')')))),
+						mapEntry.getValue());
+			}
+		}
+
+		return correctionsMap;
 	}
 
 	private int minMaxRegretIndex(INDArray[] distances) {
@@ -285,5 +449,41 @@ public class SentenceCompletionAnswering {
 		final SentenceCompletionQuestions questions = new SentenceCompletionQuestions();
 		final List<Question> listQuestions = questions.getQuestions();
 		return listQuestions;
+	}
+
+	@SuppressWarnings("resource")
+	private static Iterator<Question> trainingQuestions() throws FileNotFoundException, IOException {
+		final String trainingQuestions = "/home/srmq/git/holmes-question-producer/trainingQuestions-1m.spark.json.gz";
+		final BufferedReader bufR = new BufferedReader(
+				new InputStreamReader(new GZIPInputStream(new FileInputStream(trainingQuestions))));
+		Iterator<Question> questionIterator = new Iterator<Question>() {
+			private BufferedReader file = bufR;
+			private String nextLine = file.readLine();
+			private JsonSerializer<Question> serializer = new JsonSerializer<Question>(Question.class);
+
+			@Override
+			public boolean hasNext() {
+				return nextLine != null && nextLine.trim().length() > 0;
+			}
+
+			@Override
+			public Question next() {
+				Question q;
+				try {
+					q = serializer.deserialize(nextLine);
+					nextLine = bufR.readLine();
+				} catch (IOException e) {
+					throw new IllegalStateException(e);
+				}
+				return q;
+			}
+
+			@Override
+			protected void finalize() throws Throwable {
+				super.finalize();
+				file.close();
+			}
+		};
+		return questionIterator;
 	}
 }
